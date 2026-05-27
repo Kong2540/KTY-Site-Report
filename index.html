@@ -254,7 +254,7 @@ const LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAdUAAAIACAYAAADUovb2
    ถ้าปล่อยว่าง = โหมด DEMO (ทำงานในเครื่อง ไม่ส่งออกจริง)
    ============================================================ */
 const CONFIG = {
-  BACKEND_URL: "https://script.google.com/macros/s/AKfycbxwKcZnAjoJRD2YkS5IgwEb7Ib1sedOE013tLasH_aznzgXVbNv5eGxKs66bK-Sc4hL/exec", // <-- วาง Apps Script URL ที่นี่
+  BACKEND_URL: "https://script.google.com/macros/s/AKfycbwDn3WFyXUL2dJFcJmI82hQdHA86TA_tIMRJ1Z9v_k5vgABwlfB_YJJBUhOet2a7A-c/exec", // <-- วาง Apps Script URL ที่นี่
   COMPANY: "หจก.กิตติยาก่อสร้าง 1994",
   COMPANY_SHORT: "KTY",
 };
@@ -377,6 +377,10 @@ async function demoBackend(action, payload){
     case "submitReport": {
       console.log("%c[DEMO] รายงานถูกส่ง (จำลอง) →","color:#37d399;font-weight:bold", payload);
       return { ok:true, id:"RPT-"+Date.now() };
+    }
+    case "listProjects": {
+      // โหมด demo: คืนรายการตัวอย่าง (ของจริงจะดึงจาก backend)
+      return { ok:true, projects: SITE_PROJECTS.map(s=>({id:s.id,name:s.name})) };
     }
     default: return { ok:false, error:"ไม่รู้จัก action: "+action };
   }
@@ -803,8 +807,33 @@ function ProjectAvatar({project,size=56}){
 
 /* ============================================================
    PROJECT SELECT — หน้าเลือกโครงการ (คั่นก่อนเข้าหน้ารายงาน)
+   ดึงรายชื่อกลุ่มจริงที่ลงทะเบียนผ่านบอทจาก backend
    ============================================================ */
-function ProjectSelect({user,onPick}){
+const PROJECT_COLORS = ["#2fd4c4","#4d9bff","#19e0b8","#a78bfa","#ff9f6e","#f06595","#63e6be","#ffd43b"];
+function colorFromId(id){
+  let h=0; for(let i=0;i<String(id).length;i++) h=(h*31+String(id).charCodeAt(i))>>>0;
+  return PROJECT_COLORS[h % PROJECT_COLORS.length];
+}
+
+function ProjectSelect({user,onPick,toast}){
+  const [projects,setProjects]=useState(null); // null=กำลังโหลด, []=ไม่มี
+  const [err,setErr]=useState("");
+
+  useEffect(()=>{
+    let alive=true;
+    (async()=>{
+      try{
+        const r=await callBackend("listProjects",{});
+        if(!alive) return;
+        if(r.ok && Array.isArray(r.projects)){
+          // เติมสีให้แต่ละกลุ่มจาก id
+          setProjects(r.projects.map(p=>({...p, color:p.color||colorFromId(p.id)})));
+        } else { setProjects([]); setErr(r.error||"ดึงรายชื่อโครงการไม่สำเร็จ"); }
+      }catch(ex){ if(alive){ setProjects([]); setErr("เชื่อมต่อไม่สำเร็จ: "+ex.message); } }
+    })();
+    return ()=>{ alive=false; };
+  },[]);
+
   return (
     <div className="pad fadein">
       <div className="kicker">STEP 1 — เลือกโครงการ</div>
@@ -816,20 +845,48 @@ function ProjectSelect({user,onPick}){
         เลือกโครงการที่จะรายงาน — ระบบจะส่งรายงานเข้ากลุ่มไลน์ของโครงการนั้นโดยอัตโนมัติ
         กรุณาตรวจสอบให้ถูกต้องก่อนเข้ารายงาน
       </div>
-      <div className="stagger">
-        {SITE_PROJECTS.map(p=>(
-          <div key={p.id} className="project-card" onClick={()=>onPick(p)}>
-            <ProjectAvatar project={p} size={56}/>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:11.5,color:p.color||"var(--hi)",fontWeight:700,letterSpacing:.5}}>{p.code}</div>
-              <div style={{fontSize:15.5,fontWeight:600,lineHeight:1.3}}>{p.name}</div>
-              <div style={{fontSize:11.5,color:"var(--muted-2)",marginTop:3,display:"flex",alignItems:"center",gap:5}}>
-                <span style={{fontSize:13}}>💬</span> กลุ่มไลน์โครงการ</div>
+
+      {projects===null && (
+        <div className="stagger">
+          {[0,1,2].map(i=>(
+            <div key={i} className="project-card" style={{cursor:"default"}}>
+              <div className="skel" style={{width:56,height:56,borderRadius:"50%"}}></div>
+              <div style={{flex:1}}>
+                <div className="skel" style={{width:"40%",height:12,marginBottom:8}}></div>
+                <div className="skel" style={{width:"75%",height:16}}></div>
+              </div>
             </div>
-            <span style={{fontSize:22,color:"var(--muted-2)"}}>›</span>
+          ))}
+        </div>
+      )}
+
+      {projects && projects.length===0 && (
+        <div className="card" style={{textAlign:"center",padding:"32px 22px"}}>
+          <div style={{fontSize:42,marginBottom:12}}>💬</div>
+          <div style={{fontWeight:600,fontSize:16,marginBottom:8}}>ยังไม่มีกลุ่มที่ลงทะเบียน</div>
+          <div style={{color:"var(--muted)",fontSize:13.5,lineHeight:1.6}}>
+            เชิญบอทเข้ากลุ่มไลน์โครงการ แล้วพิมพ์ <b style={{color:"var(--hi)"}}>"ลงทะเบียนกลุ่ม"</b> ในกลุ่ม
+            จากนั้นกลุ่มจะมาแสดงที่นี่โดยอัตโนมัติ
           </div>
-        ))}
-      </div>
+          {err && <div className="hint" style={{marginTop:14,color:"var(--muted-2)"}}>({err})</div>}
+        </div>
+      )}
+
+      {projects && projects.length>0 && (
+        <div className="stagger">
+          {projects.map(p=>(
+            <div key={p.id} className="project-card" onClick={()=>onPick(p)}>
+              <ProjectAvatar project={p} size={56}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:15.5,fontWeight:600,lineHeight:1.3}}>{p.name}</div>
+                <div style={{fontSize:11.5,color:"var(--muted-2)",marginTop:3,display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{fontSize:13}}>💬</span> กลุ่มไลน์โครงการ</div>
+              </div>
+              <span style={{fontSize:22,color:"var(--muted-2)"}}>›</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -910,7 +967,7 @@ function ReportForm({user,toast,onLogout,project,onChangeProject}){
   };
   const delPhoto=(i)=>setR(p=>({...p,photos:p.photos.filter((_,idx)=>idx!==i)}));
 
-  const site = SITE_PROJECTS.find(s=>s.id===r.site);
+  const site = project; // โครงการที่เลือกมาจากหน้า ProjectSelect (กลุ่มจริงหรือ demo)
   const totalCrew = r.crew.reduce((a,c)=>a+c.count,0);
 
   function validate(){
@@ -925,7 +982,7 @@ function ReportForm({user,toast,onLogout,project,onChangeProject}){
     const payload={
       reporter:{ name:`${user.title} ${user.firstName} ${user.lastName}`,
         position:user.position, email:user.email },
-      siteId:r.site, siteName:site.name, siteCode:site.code,
+      siteId:r.site, siteName:site.name, siteCode:site.code||"",
       date:r.date, weather:r.weather,
       weatherLabel:WEATHER.find(w=>w.id===r.weather)?.name,
       work:r.work,
@@ -968,7 +1025,7 @@ function ReportForm({user,toast,onLogout,project,onChangeProject}){
         <div style={{display:"flex",alignItems:"center",gap:13}}>
           <ProjectAvatar project={site} size={52}/>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:11,color:"var(--hi)",fontWeight:600,letterSpacing:.5}}>[{site.code}] กำลังรายงานเข้าโครงการ</div>
+            <div style={{fontSize:11,color:"var(--hi)",fontWeight:600,letterSpacing:.5}}>{site.code?"["+site.code+"] ":""}กำลังรายงานเข้าโครงการ</div>
             <div style={{fontSize:16,fontWeight:600,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis"}}>{site.name}</div>
           </div>
           <button className="btn btn-ghost btn-sm" style={{flexShrink:0}} onClick={onChangeProject}>เปลี่ยน</button>
@@ -1134,7 +1191,7 @@ function Preview({r,site,user,totalCrew,onBack,onSend}){
             </div>
             <div style={{height:4,background:"linear-gradient(90deg,#1bb3a6,#2fd4c4 45%,#6fe3e0 70%,#2fd4c4)"}}></div>
             <div style={{padding:"16px 18px"}}>
-              <PvRow ic="📍" label="หน้างาน" val={`[${site.code}] ${site.name}`}/>
+              <PvRow ic="📍" label="หน้างาน" val={`${site.code?"["+site.code+"] ":""}${site.name}`}/>
               <PvRow ic="📅" label="วันที่" val={thaiDate(r.date)}/>
               <PvRow ic={weather.ic} label="สภาพอากาศ" val={weather.name}/>
               <PvDivider/>
@@ -1268,7 +1325,7 @@ function App(){
         goLogin={()=>setScreen("login")}
         onVerified={()=>{showToast("ลงทะเบียนเสร็จสมบูรณ์ เข้าสู่ระบบได้เลย","ok");setScreen("login");}}/>}
 
-      {screen==="select" && user && <ProjectSelect user={user}
+      {screen==="select" && user && <ProjectSelect user={user} toast={showToast}
         onPick={p=>{setProject(p);setScreen("app");}}/>}
 
       {screen==="app" && user && project && <ReportForm user={user} toast={showToast}
