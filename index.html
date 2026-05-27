@@ -1140,7 +1140,7 @@ function ReportForm({user,toast,onLogout,project,onChangeProject}){
               </div>
             ))}
             <label className="photo-add">
-              <input type="file" accept="image/*" multiple capture="environment"
+              <input type="file" accept="image/*" multiple
                 style={{display:"none"}} onChange={e=>{onAddPhotos(e.target.files); e.target.value="";}}/>
               <span style={{fontSize:28,lineHeight:1}}>＋</span>
               <span style={{fontSize:12,marginTop:4}}>เพิ่มรูป</span>
