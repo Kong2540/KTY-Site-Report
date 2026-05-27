@@ -254,7 +254,7 @@ const LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAdUAAAIACAYAAADUovb2
    ถ้าปล่อยว่าง = โหมด DEMO (ทำงานในเครื่อง ไม่ส่งออกจริง)
    ============================================================ */
 const CONFIG = {
-  BACKEND_URL: "https://script.google.com/macros/s/AKfycbwlEcEb3GfgfV-YkVlJ6ztAoVZF9rL_ZvsG27L9XL1QRK9WbGD0pjAVwyFuYgYG-dqQ/exec", // <-- วาง Apps Script URL ที่นี่
+  BACKEND_URL: "https://script.google.com/macros/s/AKfycbw8wAPq4eoDT7H85jLcvZN3S_gC91PuNB3tkSUXkxJ462ncpjBA_wwbTEp0oW7tBMI/exec", // <-- วาง Apps Script URL ที่นี่
   COMPANY: "หจก.กิตติยาก่อสร้าง 1994",
   COMPANY_SHORT: "KTY",
 };
@@ -940,6 +940,8 @@ function ReportForm({user,toast,onLogout,project,onChangeProject}){
   });
   const [step,setStep]=useState("form"); // form | preview | sending | done
   const [sentId,setSentId]=useState("");
+  const [progress,setProgress]=useState(0);   // % ความคืบหน้าการส่ง
+  const [stuck,setStuck]=useState(false);      // เตือนถ้าค้างนานเกินไป
   const set=(k,v)=>setR(p=>({...p,[k]:v}));
   const toggle=(k,id)=>setR(p=>({...p,[k]:p[k].includes(id)?p[k].filter(x=>x!==id):[...p[k],id]}));
   // กำลังคน: ปรับจำนวน / แก้ชื่อ / ลบ / เพิ่ม
@@ -990,7 +992,17 @@ function ReportForm({user,toast,onLogout,project,onChangeProject}){
   function goPreview(){ if(validate()){ setStep("preview"); window.scrollTo(0,0); } }
 
   async function send(){
-    setStep("sending");
+    setStep("sending"); setProgress(0); setStuck(false);
+    // จำลองความคืบหน้าแบบค่อยๆ ขยับ (fetch จริงบอก % ไม่ได้ แต่ทำให้ผู้ใช้เห็นว่าระบบทำงานอยู่)
+    let pct=0;
+    const tick=setInterval(()=>{
+      // ขยับเร็วช่วงแรก แล้วช้าลงเมื่อใกล้ 90% (ค้างที่ 90 รอ backend ตอบ)
+      const step = pct<50?6 : pct<80?3 : pct<90?1 : 0;
+      pct=Math.min(90, pct+step); setProgress(pct);
+    }, 250);
+    // watchdog: ถ้าเกิน 25 วินาทียังไม่เสร็จ แจ้งว่าอาจค้าง
+    const watchdog=setTimeout(()=>setStuck(true), 25000);
+
     const payload={
       reporter:{ name:`${user.title} ${user.firstName} ${user.lastName}`,
         position:user.position, email:user.email },
@@ -1011,11 +1023,13 @@ function ReportForm({user,toast,onLogout,project,onChangeProject}){
       })),
       submittedAt:new Date().toISOString(),
     };
+    const cleanup=()=>{ clearInterval(tick); clearTimeout(watchdog); };
     try{
       const res=await callBackend("submitReport",payload);
-      if(res.ok){ setSentId(res.id||""); setStep("done"); }
+      cleanup(); setProgress(100);
+      if(res.ok){ setSentId(res.id||""); setTimeout(()=>setStep("done"),400); }
       else { toast(res.error||"ส่งไม่สำเร็จ","bad"); setStep("preview"); }
-    }catch(ex){ toast("เชื่อมต่อไม่สำเร็จ: "+ex.message,"bad"); setStep("preview"); }
+    }catch(ex){ cleanup(); toast("เชื่อมต่อไม่สำเร็จ: "+ex.message,"bad"); setStep("preview"); }
   }
 
   function reset(){
@@ -1026,7 +1040,7 @@ function ReportForm({user,toast,onLogout,project,onChangeProject}){
   }
 
   if(step==="done") return <DoneScreen site={site} sentId={sentId} onNew={reset}/>;
-  if(step==="sending") return <SendingScreen site={site}/>;
+  if(step==="sending") return <SendingScreen site={site} progress={progress} stuck={stuck} photoCount={r.photos.length}/>;
   if(step==="preview") return <Preview r={r} site={site} user={user} totalCrew={totalCrew}
     onBack={()=>{setStep("form");window.scrollTo(0,0);}} onSend={send}/>;
 
@@ -1307,14 +1321,35 @@ function PvDivider(){return <div style={{height:1,background:"#eaeaea",margin:"1
 /* ============================================================
    SENDING / DONE
    ============================================================ */
-function SendingScreen({site}){
+function SendingScreen({site, progress, stuck, photoCount}){
+  // ข้อความสถานะตามขั้น
+  let stage = "กำลังเตรียมข้อมูล...";
+  if(progress>=15 && progress<45) stage = photoCount>0?`กำลังอัปโหลดรูปภาพ ${photoCount} รูปไป Google Drive...`:"กำลังบันทึกข้อมูลลง Google Sheet...";
+  else if(progress>=45 && progress<70) stage = "กำลังสร้างไฟล์รายงาน PDF...";
+  else if(progress>=70 && progress<90) stage = "กำลังโพสต์เข้ากลุ่มไลน์...";
+  else if(progress>=90 && progress<100) stage = "เกือบเสร็จแล้ว รอระบบยืนยัน...";
+  else if(progress>=100) stage = "เสร็จสมบูรณ์!";
+
   return (
-    <div className="center-screen fadein" style={{textAlign:"center"}}>
-      <div className="spinner dark" style={{width:48,height:48,borderWidth:4,margin:"0 auto 22px"}}></div>
-      <div className="h2">กำลังส่งรายงาน...</div>
-      <div style={{color:"var(--muted)",fontSize:14,marginTop:8}}>
-        บอทกำลังโพสต์เข้ากลุ่มไลน์<br/>และบันทึกลง Google Sheet
+    <div className="center-screen fadein" style={{textAlign:"center",padding:"40px 24px"}}>
+      <div style={{position:"relative",width:120,height:120,margin:"0 auto 26px"}}>
+        <svg width="120" height="120" viewBox="0 0 120 120" style={{transform:"rotate(-90deg)"}}>
+          <circle cx="60" cy="60" r="52" fill="none" stroke="#1c4856" strokeWidth="7"/>
+          <circle cx="60" cy="60" r="52" fill="none" stroke="var(--hi)" strokeWidth="7"
+            strokeLinecap="round" strokeDasharray={2*Math.PI*52}
+            strokeDashoffset={2*Math.PI*52*(1-progress/100)}
+            style={{transition:"stroke-dashoffset .35s ease"}}/>
+        </svg>
+        <div style={{position:"absolute",inset:0,display:"grid",placeItems:"center",
+          fontFamily:"Kanit",fontWeight:700,fontSize:28,color:"var(--hi)"}}>{Math.round(progress)}%</div>
       </div>
+      <div className="h2" style={{marginBottom:8}}>กำลังส่งรายงาน</div>
+      <div style={{color:"var(--muted)",fontSize:14,lineHeight:1.6,minHeight:42}}>{stage}</div>
+      {stuck && <div style={{marginTop:22,background:"#3a2418",border:"1px solid var(--warn)",
+        borderRadius:11,padding:"12px 16px",color:"var(--warn)",fontSize:13,lineHeight:1.55,maxWidth:380,margin:"22px auto 0"}}>
+        ⚠ ระบบใช้เวลาส่งนานกว่าปกติ<br/>
+        <span style={{color:"var(--muted)",fontWeight:400}}>อาจเป็นเพราะอินเทอร์เน็ตช้า หรือมีรูปจำนวนมาก กรุณารอสักครู่ ระบบยังทำงานอยู่</span>
+      </div>}
     </div>
   );
 }
