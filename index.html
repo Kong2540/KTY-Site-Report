@@ -37,6 +37,19 @@
   --paper:#f4fbfb;
   --r:14px;
   --maxw:560px;
+  --r:14px;
+  --hi:#2fd4c4;
+  --ok:#2fd4c4;
+  --warn:#e8a84a;
+  --bad:#e05c5c;
+  --bg:#071a22;
+  --panel:#0d2630;
+  --panel2:#112c38;
+  --cloud:#c8d8dc;
+  --muted:#6a8a94;
+  --line:#1e3a44;
+  --line-solid:#1e3a44;
+  --px:16px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
@@ -111,11 +124,13 @@ body{
 .divider{height:1px;background:var(--line-solid);margin:24px 0;border:none}
 
 /* ====== Checkboxes / chips ====== */
-.chipgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* ใช้ repeat(auto-fill) แทน 1fr 1fr เพื่อให้ขึ้นบรรทัดใหม่อัตโนมัติเมื่อแคบ */
+.chipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .chip{
-  display:flex;align-items:center;gap:10px;background:var(--panel);
-  border:1.5px solid var(--line-solid);border-radius:11px;padding:12px 13px;
-  cursor:pointer;transition:all .15s;user-select:none;font-size:14.5px;font-weight:500;
+  display:flex;align-items:center;gap:8px;background:var(--panel);
+  border:1.5px solid var(--line-solid);border-radius:11px;padding:11px 10px;
+  cursor:pointer;transition:all .15s;user-select:none;font-size:13.5px;font-weight:500;
+  min-width:0;word-break:break-word;
 }
 .chip:hover{border-color:#4a505c}
 .chip.on{background:#0a2e32;border-color:var(--hi);color:var(--hi)}
@@ -234,6 +249,47 @@ body{
 @keyframes spin{to{transform:rotate(360deg)}}
 .skel{background:linear-gradient(90deg,#23262e,#2c303a,#23262e);background-size:200% 100%;animation:sh 1.2s infinite;border-radius:8px}
 @keyframes sh{to{background-position:-200% 0}}
+
+/* ====== RESPONSIVE — พอดีทุกขนาดมือถือ ====== */
+/* ป้องกัน overflow แนวนอน */
+*{box-sizing:border-box;max-width:100%}
+img,video,iframe{max-width:100%}
+
+/* App container — padding ซ้ายขวาใช้ --px เสมอ */
+.app{
+  width:100%;
+  max-width:var(--maxw);
+  margin:0 auto;
+  padding-left:var(--px);
+  padding-right:var(--px);
+}
+
+/* Card ไม่มี padding นอก — ใช้ padding ใน card เอง */
+.card{padding:18px}
+
+/* row2 (2 คอลัมน์) — ถ้าแคบมากให้เป็น 1 คอลัมน์ */
+@media(max-width:360px){
+  .row2{grid-template-columns:1fr}
+  .chipgrid{grid-template-columns:1fr}
+  .chip{font-size:13px;padding:10px 9px}
+}
+
+/* มือถือกลาง 361-430px */
+@media(min-width:361px) and (max-width:430px){
+  .chipgrid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+}
+
+/* topbar ให้ใช้ --px เช่นกัน */
+.topbar-inner{padding-left:var(--px);padding-right:var(--px)}
+
+/* center-screen ใช้ --px */
+.center-screen{padding-left:var(--px);padding-right:var(--px)}
+
+/* input/textarea ไม่ล้นขอบ */
+.input,.select,.textarea{max-width:100%}
+
+/* ปุ่มใน done screen ไม่ล้น */
+.btn{max-width:100%}
 </style>
 </head>
 <body>
